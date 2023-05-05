@@ -1,78 +1,84 @@
+#設定 server 名稱和伺服器根目錄
 server {
-    listen 80;
-    listen [::]:80;
-    # For https
-    # listen 443 ssl;
-    # listen [::]:443 ssl ipv6only=on;
-    # ssl_certificate /var/certs/kdan.ksoj.club-cert1.pem;
-    # ssl_certificate_key /var/certs/kdan.ksoj.club-privkey1.pem;
-    server_name 127.0.0.1;
-    root /var/www/hell/miatest/public;
-    index index.html index.htm;
-    location ~ ^/api {
-        rewrite ^ /index.php;
-    }
-    location / {
-          try_files $uri @prerender;
-       #  try_files $uri $uri/ /index.html @prerender;
-#         try_files $uri $uri/ /index.html /index.php;
-    }
-    location ~ ^/storage {
-    	root /var/www/hell/miatest/public;
-        try_files $uri $uri/;
-#        add_header Access-Control-Allow-Origin http://oo24-erp.ksoj.club;
-#        add_header Access-Control-Allow-Origin https://oo24-erp.ksoj.club;
-        add_header Access-Control-Allow-Origin *;
-    }
-    location ~ \.php$ {
-    	root /var/www/hell/miatest/public;
-        try_files $uri /index.php =404;
-        fastcgi_pass php-upstream;
-        fastcgi_index index.php;
-        fastcgi_buffers 16 16k;
-        fastcgi_buffer_size 32k;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        #fixes timeouts
-        fastcgi_read_timeout 600;
-        include fastcgi_params;
-    }
-    location ~ /\.ht {
-        deny all;
-    }
-    location /.well-known/acme-challenge/ {
-        root /var/www/letsencrypt/;
-        log_not_found off;
-    }
-    location @prerender {
-        proxy_set_header X-Prerender-Token BHF34IZysfwTJo8BrFSY;
-        set $prerender 0;
-        if ($http_user_agent ~* "googlebot|bingbot|yandex|baiduspider|twitterbot|facebookexternalhit|rogerbot|linkedinbot|embedly|quora link preview|showyoubot|outbrain|pinterest\/0\.|pinterestbot|slackbot|vkShare|W3C_Validator|whatsapp") {
-            set $prerender 1;
-        }
-        if ($args ~ "_escaped_fragment_") {
-            set $prerender 1;
-        }
-        if ($http_user_agent ~ "Prerender") {
-            set $prerender 0;
-        }
-        if ($uri ~* "\.(js|css|xml|less|png|jpg|jpeg|gif|pdf|doc|txt|ico|rss|zip|mp3|rar|exe|wmv|doc|avi|ppt|mpg|mpeg|tif|wav|mov|psd|ai|xls|mp4|m4a|swf|dat|dmg|iso|flv|m4v|torrent|ttf|woff|svg|eot)") {
-            set $prerender 0;
-        }
-        
-        #resolve using Google's DNS server to force DNS resolution and prevent caching of IPs
-        resolver 8.8.8.8;
- 
-        if ($prerender = 1) {
-            
-            #setting prerender as a variable forces DNS resolution since nginx caches IPs and doesnt play well with load balancing
-            set $prerender "service.prerender.io";
-            rewrite .* /$scheme://$host$request_uri? break;
-            proxy_pass http://$prerender;
-        }
-        if ($prerender = 0) {
-            rewrite .* /index.html break;
-        }
-    }
-    error_log /var/log/nginx/app_error.log;
-    access_log /var/log/nginx/app_access.log;
-}
+	#server_name 3.38.73.63 onlineproject.dev;
+	#root /home/ubuntu/project/collectingBooks/public;
+	listen 86;
+	server_name 127.0.0.1;
+	root /var/www/hell/miatest/public;
+
+	# 設定首頁
+	#index index.html index.htm index.php;
+
+	# 設定網站編碼
+	charset utf-8;
+
+	# prerender.io
+	location / {
+		if ($prerender = 1) {
+			rewrite (.*) /prerenderio last;
+		}
+		index index.html index.htm index.php;
+		try_files $uri $uri/ /index.php?$query_string;
+
+		proxy_set_header Host $SERVER_NAME;
+		proxy_set_header Connection "";
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+		proxy_hide_header Cache-Control;
+		add_header Cache-Control "public,max-age=31536000";
+
+		#resolve using Google's DNS server to force DNS resolution and prevent caching of IPs
+		resolver 8.8.8.8 8.8.4.4;
+
+		#setting backend as a variable forces DNS resolution since nginx caches IPs and doesnt play well with load balancing
+		#set $backend "3.38.73.63";
+
+		rewrite .* $uri break;
+		#proxy_pass http://$backend;
+		#proxy_pass http://onlineproject.dev;
+	}
+
+	location /prerenderio {
+		if ($prerender = 0) {
+			return 404;
+		}
+
+		proxy_set_header X-Prerender-Token BHF34IZysfwTJo8BrFSY; 
+
+		proxy_hide_header Cache-Control;
+		add_header Cache-Control "private,max-age=600,must-revalidate";
+
+		#resolve using Google's DNS server to force DNS resolution and prevent caching of IPs
+		resolver 8.8.8.8 8.8.4.4;
+		set $prerender_host "service.prerender.io";
+		proxy_pass https://$prerender_host;
+		rewrite .* /$scheme://$host$request_uri? break;
+	}
+
+	# 前後端分離的後端routes
+	location ~ ^/api {
+		rewrite ^ /index.php;
+	}
+
+	# 設定網站圖示和機器人檔案位置
+#	location = /favicon.ico { access_log off; log_not_found off; }
+#	location = /robots.txt  { access_log off; log_not_found off; }
+
+
+	# 設定 404 錯誤頁面
+	error_page 404 /index.php;
+
+	# 設定 PHP-FPM 位置和 FastCGI 相關參數 php proxy_pass
+	location ~ \.php$ {
+	#	root /home/ubuntu/project/collectingBooks/public;
+		root /var/www/hell/miatest/public
+		fastcgi_pass unix:/var/run/php/php8.1-fpm.sock; #或127.0.0.1:9000 port
+		fastcgi_index index.php;
+		fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+		include fastcgi_params;
+	}
+
+	# 防止訪問 .well-known 目錄下的檔案
+	location ~ /\.(?!well-known).* {
+		deny all;
+	}
